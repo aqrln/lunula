@@ -1,3 +1,5 @@
+use core::mem::Alignment;
+
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 use bitflags::bitflags;
 use riscv::register::satp;
@@ -29,9 +31,9 @@ impl PageTable {
         &self.entries[idx]
     }
 
-    fn physical_addr(&self) -> PhysicalAddr {
+    fn physical_addr(&self, kernel_phys_to_virt_offset: usize) -> PhysicalAddr {
         let virt_addr = VirtualAddr::from(self.entries.as_ptr());
-        virt_addr.identity_mapped_physical()
+        AddressSpace::global_mapping_virt_to_phys(virt_addr, kernel_phys_to_virt_offset)
     }
 }
 
@@ -50,6 +52,7 @@ impl AddressSpaceId {
 
 struct AddressSpace {
     root: Box<PageTable>,
+    available_range: AddressRange<VirtualAddr>,
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
@@ -80,31 +83,42 @@ bitflags! {
 }
 
 impl AddressSpace {
-    fn new() -> Self {
+    fn new(range: AddressRange<VirtualAddr>) -> Self {
         Self {
+            available_range: range,
             root: Box::new(PageTable::new()),
         }
     }
 
     fn new_with_global_mappings(
+        range: AddressRange<VirtualAddr>,
+        kernel_phys_to_virt_offset: usize,
         mappings: &[(AddressRange<VirtualAddr>, PagePermissions)],
     ) -> Result<Self, MapError> {
-        let mut space = Self::new();
+        let mut space = Self::new(range);
         for &(range, permissions) in mappings {
             // We don't need to flush these pages because the corresponding address space
             // has not been activated by writing to satp register yet. We will flush the
             // whole address space when switching to it
-            space.identity_map_range(range, permissions)?.do_not_flush();
+            space
+                .map_global_kernel_range(range, permissions, kernel_phys_to_virt_offset)?
+                .do_not_flush();
         }
         Ok(space)
     }
 
-    fn identity_map_range(
+    fn map_global_kernel_range(
         &mut self,
         range: AddressRange<VirtualAddr>,
         permissions: PagePermissions,
+        kernel_phys_to_virt_offset: usize,
     ) -> Result<PageTableUpdate, MapError> {
-        self.map_range(range, range.identity_mapped_physical(), permissions)
+        self.map_range(
+            range,
+            range.map(|addr| Self::global_mapping_virt_to_phys(addr, kernel_phys_to_virt_offset)),
+            permissions,
+            kernel_phys_to_virt_offset,
+        )
     }
 
     /// Maps the specified range using an optimal number of pages of automatically chosen size.
@@ -116,8 +130,9 @@ impl AddressSpace {
         mut virtual_range: AddressRange<VirtualAddr>,
         mut physical_range: AddressRange<PhysicalAddr>,
         permissions: PagePermissions,
+        kernel_phys_to_virt_offset: usize,
     ) -> Result<PageTableUpdate, MapError> {
-        println!("mapping range {virtual_range}");
+        println!("mapping range {virtual_range} to {physical_range}");
 
         for addr in [virtual_range.start, virtual_range.end] {
             if !addr.is_aligned(PageType::Small) {
@@ -148,6 +163,7 @@ impl AddressSpace {
                     virtual_range.start,
                     physical_range.start,
                     permissions,
+                    kernel_phys_to_virt_offset,
                 )?;
                 let offset = page_type.size() as isize;
                 virtual_range.start = virtual_range.start.offset(offset);
@@ -174,6 +190,7 @@ impl AddressSpace {
         virtual_addr: VirtualAddr,
         physical_addr: PhysicalAddr,
         permissions: PagePermissions,
+        kernel_phys_to_virt_offset: usize,
     ) -> Result<PageTableUpdate, MapError> {
         let mut update = PageTableUpdate::One(virtual_addr);
 
@@ -198,8 +215,9 @@ impl AddressSpace {
                 if !pte_val.is_valid() {
                     *update = PageTableUpdate::Many;
                     let next_table = Box::leak(Box::new(PageTable::new())) as &_;
-                    let addr = VirtualAddr::expose_provenance(next_table as *const _);
-                    let phys_addr = addr.identity_mapped_physical();
+                    let addr = VirtualAddr::from(next_table as *const _);
+                    let phys_addr =
+                        Self::global_mapping_virt_to_phys(addr, kernel_phys_to_virt_offset);
                     pte.store(PteValue::non_leaf(phys_addr));
                     Ok(next_table)
                 } else if pte_val.is_leaf() {
@@ -209,8 +227,9 @@ impl AddressSpace {
                     )))
                 } else {
                     let phys_addr = PhysicalAddr::from_ppn(pte_val.ppn());
-                    let addr = phys_addr.identity_mapped_virtual();
-                    let ptr = core::ptr::with_exposed_provenance::<PageTable>(addr.get());
+                    let addr =
+                        Self::global_mapping_phys_to_virt(phys_addr, kernel_phys_to_virt_offset);
+                    let ptr = addr.as_ptr().cast();
                     Ok(unsafe { &*ptr })
                 }
             };
@@ -243,6 +262,48 @@ impl AddressSpace {
         }
 
         Ok(update)
+    }
+
+    fn allocate_addresses(
+        &mut self,
+        size: usize,
+        alignment: Alignment,
+    ) -> AddressRange<VirtualAddr> {
+        let start = VirtualAddr::new(
+            self.available_range
+                .start
+                .get()
+                .next_multiple_of(alignment.max(PageType::Small.alignment()).as_usize()),
+        );
+
+        let end = start.add(size.next_multiple_of(PageType::Small.alignment().as_usize()));
+        if end > self.available_range.end {
+            panic!(
+                "ran out of virtual addresses (allocation size={size}, alignment={alignment:?})"
+            );
+        }
+
+        self.available_range.start = end;
+
+        (start..end).into()
+    }
+
+    fn global_mapping_virt_to_phys(
+        addr: VirtualAddr,
+        kernel_phys_to_virt_offset: usize,
+    ) -> PhysicalAddr {
+        PhysicalAddr::new(addr.get().strict_sub(kernel_phys_to_virt_offset) as u64)
+    }
+
+    fn global_mapping_phys_to_virt(
+        addr: PhysicalAddr,
+        kernel_phys_to_virt_offset: usize,
+    ) -> VirtualAddr {
+        VirtualAddr::new(
+            (addr.get() as usize)
+                .checked_add(kernel_phys_to_virt_offset)
+                .expect("kernel_virt_to_phys_offset addition to a valid kernel physical address should not overflow"),
+        )
     }
 }
 
@@ -290,41 +351,43 @@ impl core::ops::AddAssign<PageTableUpdate> for PageTableUpdate {
 
 pub struct MemoryManager {
     address_spaces: BTreeMap<AddressSpaceId, AddressSpace>,
+    kernel_phys_to_virt_offset: usize,
     _global_mappings: Vec<(AddressRange<VirtualAddr>, PagePermissions)>,
 }
 
 impl MemoryManager {
     pub fn new_with_global_mappings(
+        kernel_phys_to_virt_offset: usize,
+        kernel_end: VirtualAddr,
         global_mappings: Vec<(AddressRange<VirtualAddr>, PagePermissions)>,
     ) -> Result<Self, MapError> {
         let mut address_spaces = BTreeMap::new();
         address_spaces.insert(
             AddressSpaceId::kernel(),
-            AddressSpace::new_with_global_mappings(&global_mappings)?,
+            AddressSpace::new_with_global_mappings(
+                (kernel_end..VirtualAddr::new(usize::MAX)).into(),
+                kernel_phys_to_virt_offset,
+                &global_mappings,
+            )?,
         );
         Ok(Self {
             address_spaces,
+            kernel_phys_to_virt_offset,
             _global_mappings: global_mappings,
         })
     }
 
-    pub fn map_kernel_mmio(
+    pub fn map_kernel_private(
         &mut self,
         range: AddressRange<PhysicalAddr>,
-    ) -> Result<PageTableUpdate, MapError> {
-        self.identity_map_kernel(
-            range.identity_mapped_virtual(),
-            PagePermissions::READ | PagePermissions::WRITE,
-        )
-    }
-
-    pub fn identity_map_kernel(
-        &mut self,
-        range: AddressRange<VirtualAddr>,
+        min_page_type: PageType,
         permissions: PagePermissions,
-    ) -> Result<PageTableUpdate, MapError> {
-        self.kernel_address_space_mut()
-            .identity_map_range(range, permissions)
+    ) -> Result<(AddressRange<VirtualAddr>, PageTableUpdate), MapError> {
+        let kernel_phys_to_virt_offset = self.kernel_phys_to_virt_offset;
+        let addr_space = self.kernel_address_space_mut();
+        let virt = addr_space.allocate_addresses(range.size(), min_page_type.alignment());
+        let update = addr_space.map_range(virt, range, permissions, kernel_phys_to_virt_offset)?;
+        Ok((virt, update))
     }
 
     fn kernel_address_space(&self) -> &AddressSpace {
@@ -355,18 +418,17 @@ impl MemoryManager {
         };
     }
 
-    pub fn sync_all() {
-        riscv::asm::sfence_vma_all();
-    }
-
-    pub unsafe fn enable_virtual_memory(&self) {
-        Self::sync_all();
+    pub unsafe fn activate_kernel_address_space(&self) {
         unsafe {
             satp::set(
                 satp::Mode::Sv39,
                 AddressSpaceId::kernel().get() as _,
-                self.kernel_address_space().root.physical_addr().ppn() as _,
+                self.kernel_address_space()
+                    .root
+                    .physical_addr(self.kernel_phys_to_virt_offset)
+                    .ppn() as _,
             )
         };
+        Self::sync_address_space(AddressSpaceId::kernel());
     }
 }

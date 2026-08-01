@@ -1,4 +1,4 @@
-use core::{fmt, ops::Range};
+use core::{fmt, mem::Alignment, ops::Range};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PageType {
@@ -14,6 +14,10 @@ impl PageType {
             PageType::Large => 2 * 1024 * 1024,
             PageType::Huge => 1024 * 1024 * 1024,
         }
+    }
+
+    pub const fn alignment(self) -> Alignment {
+        Alignment::new(self.size()).expect("PageType::size should always return a power of two")
     }
 }
 
@@ -37,10 +41,6 @@ impl PhysicalAddr {
 
     pub fn from_ppn(ppn: u64) -> Self {
         Self::new(ppn << 12)
-    }
-
-    pub fn identity_mapped_virtual(self) -> VirtualAddr {
-        VirtualAddr::new(self.0 as _)
     }
 
     pub fn is_aligned(self, page_type: PageType) -> bool {
@@ -92,6 +92,10 @@ impl VirtualAddr {
         Self::new(ptr.expose_provenance())
     }
 
+    pub fn as_ptr(self) -> *const u8 {
+        core::ptr::with_exposed_provenance(self.0)
+    }
+
     pub fn get(self) -> usize {
         self.0
     }
@@ -108,16 +112,16 @@ impl VirtualAddr {
         (self.0 >> 30) & 0x1ff
     }
 
-    pub fn identity_mapped_physical(self) -> PhysicalAddr {
-        PhysicalAddr::new(self.0 as _)
-    }
-
     pub fn is_aligned(self, page_type: PageType) -> bool {
         self.0.is_multiple_of(page_type.size())
     }
 
     pub fn offset(self, by: isize) -> Self {
         Self::new(self.0.strict_add_signed(by))
+    }
+
+    pub fn add(self, offset: usize) -> Self {
+        Self::new(self.0.strict_add(offset))
     }
 }
 
@@ -167,17 +171,12 @@ impl<T> AddressRange<T> {
     pub fn new(start: T, end: T) -> Self {
         Self { start, end }
     }
-}
 
-impl AddressRange<PhysicalAddr> {
-    pub fn identity_mapped_virtual(&self) -> AddressRange<VirtualAddr> {
-        (self.start.identity_mapped_virtual()..self.end.identity_mapped_virtual()).into()
-    }
-}
-
-impl AddressRange<VirtualAddr> {
-    pub fn identity_mapped_physical(&self) -> AddressRange<PhysicalAddr> {
-        (self.start.identity_mapped_physical()..self.end.identity_mapped_physical()).into()
+    pub fn map<U>(self, f: impl Fn(T) -> U) -> AddressRange<U> {
+        AddressRange {
+            start: f(self.start),
+            end: f(self.end),
+        }
     }
 }
 

@@ -2,13 +2,12 @@
 #![no_main]
 #![feature(custom_test_frameworks)]
 #![feature(debug_closure_helpers)]
+#![feature(ptr_alignment_type)]
 #![cfg_attr(test, feature(const_type_name))]
 #![test_runner(crate::test::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
 extern crate alloc;
-
-use core::arch::naked_asm;
 
 use alloc::vec;
 use device_tree_parser::DeviceTreeParser;
@@ -19,6 +18,7 @@ use crate::mmu::{
     addr::{AddressRange, PageType},
 };
 
+mod boot;
 mod console;
 mod mmu;
 mod shutdown;
@@ -29,50 +29,14 @@ mod test;
 static HEAP: TlsfHeap = TlsfHeap::empty();
 
 unsafe extern "C" {
-    static __firmware_start: u8;
+    static __kernel_start: u8;
+    static __kernel_end: u8;
     static __text_start: u8;
     static __rodata_start: u8;
     static __data_start: u8;
     static __stack_protector: u8;
     static __stack_bottom: u8;
     static __stack_top: u8;
-}
-
-#[unsafe(naked)]
-#[unsafe(no_mangle)]
-#[unsafe(link_section = ".text.init")]
-extern "C" fn _start() -> ! {
-    naked_asm!(
-        // Initialize gp for relative addressing of small data
-        ".option push",
-        ".option norelax",
-        "la gp, __global_pointer$",
-        ".option pop",
-
-        // Initialize stack pointer
-        "la sp, __stack_top",
-
-        // Clear .bss
-        "la t0, __bss_start",
-        "la t1, __bss_end",
-        "1:",
-        "bgeu t0, t1, 2f",
-        "sd zero, 0(t0)",
-        "addi t0, t0, 8",
-        "j 1b",
-        "2:",
-
-        // Enable floating-point operations
-        "li t0, 0x6000",
-        "csrc sstatus, t0",
-        "li t0, 0x2000",
-        "csrs sstatus, t0",
-        "csrw fcsr, zero",
-
-        // Call main with a0 and a1 set by SBI
-        "tail {main}",
-        main = sym main,
-    )
 }
 
 static LOGO: &str = r#"
@@ -84,20 +48,64 @@ static LOGO: &str = r#"
 
 "#;
 
-#[unsafe(no_mangle)]
-extern "C" fn main(hart_id: usize, dtb_address: usize) -> ! {
+extern "C" fn main(
+    hart_id: usize,
+    dtb_address: usize,
+    dtb_size_be: usize,
+    load_address: usize,
+    kernel_start_phys: usize,
+) -> ! {
+    let dtb_size = u32::from_be(dtb_size_be as _) as usize;
+
     println!("{LOGO}");
-    println!("starting iris on hart {hart_id}, dtb_address={dtb_address}");
+    println!(
+        "starting iris on hart {hart_id}, dtb_address={dtb_address:#x}, dtb_size={dtb_size:#x}, load_address={load_address:#x}, kernel_start_phys={kernel_start_phys:#x}"
+    );
 
     unsafe {
         embedded_alloc::init!(HEAP, 1024 * 1024);
+    }
+
+    let mut mm = MemoryManager::new_with_global_mappings(
+        (&raw const __kernel_start).expose_provenance() - kernel_start_phys,
+        (&raw const __kernel_end).into(),
+        vec![
+            (
+                (&raw const __text_start..&raw const __rodata_start).into(),
+                PagePermissions::READ | PagePermissions::EXECUTE,
+            ),
+            (
+                (&raw const __rodata_start..&raw const __data_start).into(),
+                PagePermissions::READ,
+            ),
+            (
+                (&raw const __data_start..&raw const __stack_protector).into(),
+                PagePermissions::READ | PagePermissions::WRITE,
+            ),
+            (
+                (&raw const __stack_bottom..&raw const __stack_top).into(),
+                PagePermissions::READ | PagePermissions::WRITE,
+            ),
+        ],
+    )
+    .expect("failed to map kernel address space");
+
+    let dtb_range = {
+        let (dtb_range, update) = mm
+            .map_kernel_private(
+                AddressRange::from(dtb_address..dtb_address.strict_add(dtb_size))
+                    .with_aligned_end(PageType::Small),
+                PageType::Small,
+                PagePermissions::READ,
+            )
+            .expect("failed to map dtb");
+        update.do_not_flush();
+        dtb_range
     };
 
-    let dtb_magic = dtb_address as *const u32;
-    assert_eq!(u32::from_be(unsafe { *dtb_magic }), 0xd00dfeed);
+    unsafe { mm.activate_kernel_address_space() };
 
-    let dtb_size = u32::from_be(unsafe { *dtb_magic.add(1) });
-    let dtb_data = unsafe { core::slice::from_raw_parts(dtb_address as *const u8, dtb_size as _) };
+    let dtb_data = unsafe { core::slice::from_raw_parts(dtb_range.start.as_ptr(), dtb_size) };
     let dtp = DeviceTreeParser::new(dtb_data);
 
     let tree = dtp.parse_tree().expect("device tree must be valid");
@@ -133,37 +141,6 @@ extern "C" fn main(hart_id: usize, dtb_address: usize) -> ! {
             res.address + res.size,
             res.size
         );
-    }
-
-    let mut mm = MemoryManager::new_with_global_mappings(vec![
-        (
-            (&raw const __text_start..&raw const __rodata_start).into(),
-            PagePermissions::READ | PagePermissions::EXECUTE,
-        ),
-        (
-            (&raw const __rodata_start..&raw const __data_start).into(),
-            PagePermissions::READ,
-        ),
-        (
-            (&raw const __data_start..&raw const __stack_protector).into(),
-            PagePermissions::READ | PagePermissions::WRITE,
-        ),
-        (
-            (&raw const __stack_bottom..&raw const __stack_top).into(),
-            PagePermissions::READ | PagePermissions::WRITE,
-        ),
-    ])
-    .expect("failed to map kernel address space");
-
-    mm.identity_map_kernel(
-        AddressRange::from(dtb_data.as_ptr_range()).with_aligned_end(PageType::Small),
-        PagePermissions::READ,
-    )
-    .expect("failed to map dtb")
-    .do_not_flush();
-
-    unsafe {
-        mm.enable_virtual_memory();
     }
 
     shutdown::init(&tree, &mut mm).expect("global shutdown device not initialized");
