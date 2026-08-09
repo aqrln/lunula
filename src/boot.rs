@@ -52,28 +52,27 @@ extern "C" fn _start() -> ! {
         "srli t0, a3, 30",
         "andi t0, t0, 0x1ff", // t0 = vpn2(a3)
         "la t1, __init_page_table_l2",
-        "li t3, 8",
-        "mul t0, t0, t3",
+        "slli t0, t0, 3",
         "add t0, t0, t1",
         "la t1, __init_page_table_l1_trampoline",
-        "mv t4, t1",
-        "srli t4, t4, 12", // t4 = ppn(t1)
-        "slli t4, t4, 10", // ppn to pte
-        "ori t4, t4, 1", // flags: V
-        "sd t4, 0(t0)",
+        "mv t3, t1",
+        "srli t3, t3, 12", // t3 = ppn(t1)
+        "slli t3, t3, 10", // ppn to pte
+        "ori t3, t3, 1", // flags: V
+        "sd t3, 0(t0)",
         "srli t0, a3, 21",
         "andi t0, t0, 0x1ff", // t0 = vpn1(a3)
-        "mul t0, t0, t3",
+        "slli t0, t0, 3",
         "add t0, t0, t1",
         "la t1, __init_page_table_l0_trampoline",
-        "mv t4, t1",
-        "srli t4, t4, 12", // t4 = ppn(t1)
-        "slli t4, t4, 10", // ppn to pte
-        "ori t4, t4, 1", // flags: V
-        "sd t4, 0(t0)",
+        "mv t3, t1",
+        "srli t3, t3, 12", // t3 = ppn(t1)
+        "slli t3, t3, 10", // ppn to pte
+        "ori t3, t3, 1", // flags: V
+        "sd t3, 0(t0)",
         "srli t0, a3, 12",
         "andi t0, t0, 0x1ff", // t0 = vpn0(a3)
-        "mul t0, t0, t3",
+        "slli t0, t0, 3",
         "add t0, t0, t1",
         "srli t1, a3, 12", // t1 = ppn(a3)
         "slli t1, t1, 10", // ppn to pte
@@ -88,25 +87,25 @@ extern "C" fn _start() -> ! {
         "ld t2, __kernel_start_ptr",
         "srli t0, t2, 30",
         "andi t0, t0, 0x1ff", // t0 = vpn2(t2)
-        "mul t0, t0, t3",
+        "slli t0, t0, 3",
         "la t1, __init_page_table_l2",
         "add t0, t0, t1",
         "la t1, __init_page_table_l1_kernel",
-        "mv t4, t1",
-        "srli t4, t4, 12", // t4 = ppn(t1)
-        "slli t4, t4, 10", // ppn to pte
-        "ori t4, t4, 1", // flags: V
-        "sd t4, 0(t0)",
+        "mv t3, t1",
+        "srli t3, t3, 12", // t3 = ppn(t1)
+        "slli t3, t3, 10", // ppn to pte
+        "ori t3, t3, 1", // flags: V
+        "sd t3, 0(t0)",
         "srli t0, t2, 21",
         "andi t0, t0, 0x1ff", // t0 = vpn1(t2)
-        "mul t0, t0, t3",
+        "slli t0, t0, 3",
         "add t0, t0, t1",
         "la t1, __init_page_table_l0_kernel",
-        "mv t4, t1",
-        "srli t4, t4, 12", // t4 = ppn(t1)
-        "slli t4, t4, 10", // ppn to pte
-        "ori t4, t4, 1", // flags: V
-        "sd t4, 0(t0)",
+        "mv t3, t1",
+        "srli t3, t3, 12", // t3 = ppn(t1)
+        "slli t3, t3, 10", // ppn to pte
+        "ori t3, t3, 1", // flags: V
+        "sd t3, 0(t0)",
         "la t0, __kernel_start_phys",
         "srli t0, t0, 12",
         "addi t2, t0, 512",
