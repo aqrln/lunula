@@ -157,7 +157,7 @@ extern "C" fn main(
 
 #[panic_handler]
 fn on_panic(info: &core::panic::PanicInfo) -> ! {
-    unsafe { riscv::register::sstatus::clear_sie() };
+    riscv::interrupt::disable();
 
     match info.location() {
         Some(location) => println!("kernel panic at {}: {}", location, info.message()),
