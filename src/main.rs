@@ -40,11 +40,11 @@ unsafe extern "C" {
 }
 
 static LOGO: &str = r#"
-
-(_)_ __(_)___ 
-| | '__| / __|
-| | |  | \__ \
-|_|_|  |_|___/
+ _                   _
+| |_   _ _ __  _   _| | __ _
+| | | | | '_ \| | | | |/ _` |
+| | |_| | | | | |_| | | (_| |
+|_|\__,_|_| |_|\__,_|_|\__,_|
 
 "#;
 
@@ -59,7 +59,7 @@ extern "C" fn main(
 
     println!("{LOGO}");
     println!(
-        "starting iris on hart {hart_id}, dtb_address={dtb_address:#x}, dtb_size={dtb_size:#x}, load_address={load_address:#x}, kernel_start_phys={kernel_start_phys:#x}"
+        "starting lunula on hart {hart_id}, dtb_address={dtb_address:#x}, dtb_size={dtb_size:#x}, load_address={load_address:#x}, kernel_start_phys={kernel_start_phys:#x}"
     );
 
     unsafe {

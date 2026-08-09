@@ -1,4 +1,4 @@
-//! # Booting Iris
+//! # Booting Lunula
 //!
 //! The kernel is linked at the physical address 0x80200000 as a safe default for
 //! QEMU with OpenSBI firmware. A custom bootloader for bare metal can load it at a
@@ -13,13 +13,13 @@
 //! 2. SBI environment must be available. SBI must transfer control to the kernel
 //!    in S-mode with hart id in a0 and DTB addresss in a1.
 //!
-//! 2. Only single-hart systems are supported right now. Starting Iris on a multi-hart
+//! 2. Only single-hart systems are supported right now. Starting Lunula on a multi-hart
 //!    system is currently undefined behavior. The boot trampoline does not yet
 //!    check the hart id in a0 and has no protection against it.
 
 use core::arch::naked_asm;
 
-/// Iris boot entrypoint. Stackless, position-independent boot trampoline that initializes
+/// Lunula boot entrypoint. Stackless, position-independent boot trampoline that initializes
 /// the CPU and memory to the expected state and maps the kernel to the upper canonical
 /// half using the temporary page tables.
 #[unsafe(naked)]

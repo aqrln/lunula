@@ -1,10 +1,10 @@
 [package]
-name = "iris"
+name = "lunula"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "iris"
+name = "lunula"
 bench = false
 test = true
 
