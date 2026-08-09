@@ -39,8 +39,4 @@ tests! {
     fn test_true() {
         assert!(true);
     }
-
-    fn test_one_is_one() {
-        assert_eq!(1, 1);
-    }
 }
