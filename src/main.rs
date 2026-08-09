@@ -90,7 +90,7 @@ extern "C" fn main(
     )
     .expect("failed to map kernel address space");
 
-    let dtb_range = {
+    let dtb_address = {
         let (dtb_range, update) = mm
             .map_kernel_private(
                 AddressRange::from(dtb_address..dtb_address.strict_add(dtb_size))
@@ -100,12 +100,12 @@ extern "C" fn main(
             )
             .expect("failed to map dtb");
         update.do_not_flush();
-        dtb_range
+        dtb_range.start
     };
 
     unsafe { mm.activate_kernel_address_space() };
 
-    let dtb_data = unsafe { core::slice::from_raw_parts(dtb_range.start.as_ptr(), dtb_size) };
+    let dtb_data = unsafe { core::slice::from_raw_parts(dtb_address.as_ptr(), dtb_size) };
     let dtp = DeviceTreeParser::new(dtb_data);
 
     let tree = dtp.parse_tree().expect("device tree must be valid");
