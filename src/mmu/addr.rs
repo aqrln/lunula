@@ -1,5 +1,7 @@
 use core::{fmt, mem::Alignment, ops::Range};
 
+use riscv::bits::bf_extract;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PageType {
     Small,
@@ -105,15 +107,15 @@ impl VirtualAddr {
     }
 
     pub fn vpn0(self) -> usize {
-        (self.0 >> 12) & 0x1ff
+        bf_extract(self.0, 12, 9)
     }
 
     pub fn vpn1(self) -> usize {
-        (self.0 >> 21) & 0x1ff
+        bf_extract(self.0, 21, 9)
     }
 
     pub fn vpn2(self) -> usize {
-        (self.0 >> 30) & 0x1ff
+        bf_extract(self.0, 30, 9)
     }
 
     pub fn is_aligned(self, page_type: PageType) -> bool {
