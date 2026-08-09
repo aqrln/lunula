@@ -91,16 +91,18 @@ extern "C" fn main(
     .expect("failed to map kernel address space");
 
     let dtb_address = {
+        let dtb_page_addr = dtb_address & PageType::Small.mask();
+        let dtb_page_offset = dtb_address & !PageType::Small.mask();
         let (dtb_range, update) = mm
             .map_kernel_private(
-                AddressRange::from(dtb_address..dtb_address.strict_add(dtb_size))
+                AddressRange::from(dtb_page_addr..dtb_address.strict_add(dtb_size))
                     .with_aligned_end(PageType::Small),
                 PageType::Small,
                 PagePermissions::READ,
             )
             .expect("failed to map dtb");
         update.do_not_flush();
-        dtb_range.start
+        dtb_range.start.add(dtb_page_offset)
     };
 
     unsafe { mm.activate_kernel_address_space() };

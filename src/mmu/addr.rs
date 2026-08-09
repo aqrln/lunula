@@ -19,6 +19,10 @@ impl PageType {
     pub const fn alignment(self) -> Alignment {
         Alignment::new(self.size()).expect("PageType::size should always return a power of two")
     }
+
+    pub const fn mask(self) -> usize {
+        !(self.size() - 1)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -47,8 +51,8 @@ impl PhysicalAddr {
         self.0.is_multiple_of(page_type.size() as _)
     }
 
-    pub fn offset(self, by: isize) -> Self {
-        Self::new(self.0.strict_add_signed(by as _))
+    pub fn add(self, by: usize) -> Self {
+        Self::new(self.0.strict_add(by as _))
     }
 }
 
@@ -114,10 +118,6 @@ impl VirtualAddr {
 
     pub fn is_aligned(self, page_type: PageType) -> bool {
         self.0.is_multiple_of(page_type.size())
-    }
-
-    pub fn offset(self, by: isize) -> Self {
-        Self::new(self.0.strict_add_signed(by))
     }
 
     pub fn add(self, offset: usize) -> Self {

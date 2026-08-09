@@ -165,9 +165,8 @@ impl AddressSpace {
                     permissions,
                     kernel_phys_to_virt_offset,
                 )?;
-                let offset = page_type.size() as isize;
-                virtual_range.start = virtual_range.start.offset(offset);
-                physical_range.start = physical_range.start.offset(offset);
+                virtual_range.start = virtual_range.start.add(page_type.size());
+                physical_range.start = physical_range.start.add(page_type.size());
             }
         }
 
