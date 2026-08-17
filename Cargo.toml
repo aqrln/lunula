@@ -1,20 +1,20 @@
-[package]
-name = "lunula"
+[workspace]
+resolver = "3"
+members = ["lunula"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
 
-[[bin]]
-name = "lunula"
-bench = false
-test = true
-
-[dependencies]
+[workspace.dependencies]
 bitflags = "2.13.1"
 critical-section = "1.2.0"
 device_tree_parser = "0.4.0"
 embedded-alloc = "0.7.0"
 paste = "1.0.15"
 qemu-exit = "4.0.0"
-riscv = { version = "0.16.1", features = ["critical-section-single-hart", "s-mode"] }
+riscv = "0.16.1"
 sbi-rt = "0.0.4"
 thiserror = { version = "2.0.19", default-features = false }

@@ -1,0 +1,22 @@
+[package]
+name = "lunula"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "lunula"
+bench = false
+test = true
+
+[dependencies]
+bitflags.workspace = true
+critical-section.workspace = true
+device_tree_parser.workspace = true
+embedded-alloc.workspace = true
+paste.workspace = true
+qemu-exit.workspace = true
+riscv = { workspace = true, features = ["critical-section-single-hart", "s-mode"] }
+sbi-rt.workspace = true
+thiserror.workspace = true
