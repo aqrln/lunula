@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["lunula"]
+members = ["lunula", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
@@ -9,12 +9,19 @@ license = "MIT OR Apache-2.0"
 publish = false
 
 [workspace.dependencies]
+anyhow = "1.0.104"
+argh = "0.1.19"
 bitflags = "2.13.1"
 critical-section = "1.2.0"
 device_tree_parser = "0.4.0"
 embedded-alloc = "0.7.0"
+ignore = "0.4.33"
 paste = "1.0.15"
 qemu-exit = "4.0.0"
 riscv = "0.16.1"
 sbi-rt = "0.0.4"
 thiserror = { version = "2.0.19", default-features = false }
+time = "0.3.55"
+toml_edit = "0.25.13"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
