@@ -152,26 +152,26 @@ impl AddressSpace {
 
         let mut update = PageTableUpdate::default();
 
-        for page_type in [PageType::Huge, PageType::Large, PageType::Small] {
-            while virtual_range.start.is_aligned(page_type)
-                && physical_range.start.is_aligned(page_type)
-                && virtual_range.size() >= page_type.size()
-                && physical_range.size() >= page_type.size()
-            {
-                update += self.map_page(
-                    page_type,
-                    virtual_range.start,
-                    physical_range.start,
-                    permissions,
-                    kernel_phys_to_virt_offset,
-                )?;
-                virtual_range.start = virtual_range.start.add(page_type.size());
-                physical_range.start = physical_range.start.add(page_type.size());
+        while virtual_range.size() > 0 && physical_range.size() > 0 {
+            for page_type in [PageType::Huge, PageType::Large, PageType::Small] {
+                if virtual_range.start.is_aligned(page_type)
+                    && physical_range.start.is_aligned(page_type)
+                    && virtual_range.size() >= page_type.size()
+                    && physical_range.size() >= page_type.size()
+                {
+                    update += self.map_page(
+                        page_type,
+                        virtual_range.start,
+                        physical_range.start,
+                        permissions,
+                        kernel_phys_to_virt_offset,
+                    )?;
+                    virtual_range.start = virtual_range.start.add(page_type.size());
+                    physical_range.start = physical_range.start.add(page_type.size());
+                    break;
+                }
             }
         }
-
-        assert!(virtual_range.size() == 0);
-        assert!(physical_range.size() == 0);
 
         Ok(update)
     }
