@@ -1,4 +1,4 @@
-use core::mem::Alignment;
+use core::{fmt::Display, mem::Alignment};
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 use bitflags::bitflags;
@@ -82,6 +82,25 @@ bitflags! {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+enum MappingScope {
+    Private,
+    Global,
+}
+
+impl Display for MappingScope {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                MappingScope::Private => "private",
+                MappingScope::Global => "global",
+            }
+        )
+    }
+}
+
 impl AddressSpace {
     fn new(range: AddressRange<VirtualAddr>) -> Self {
         Self {
@@ -117,6 +136,7 @@ impl AddressSpace {
             range,
             range.map(|addr| Self::global_mapping_virt_to_phys(addr, kernel_phys_to_virt_offset)),
             permissions,
+            MappingScope::Global,
             kernel_phys_to_virt_offset,
         )
     }
@@ -130,9 +150,10 @@ impl AddressSpace {
         mut virtual_range: AddressRange<VirtualAddr>,
         mut physical_range: AddressRange<PhysicalAddr>,
         permissions: PagePermissions,
+        scope: MappingScope,
         kernel_phys_to_virt_offset: usize,
     ) -> Result<PageTableUpdate, MapError> {
-        println!("mapping range {virtual_range} to {physical_range}");
+        println!("mapping {scope} range {virtual_range} to {physical_range}");
 
         for addr in [virtual_range.start, virtual_range.end] {
             if !addr.is_aligned(PageType::Small) {
@@ -164,6 +185,7 @@ impl AddressSpace {
                         virtual_range.start,
                         physical_range.start,
                         permissions,
+                        scope,
                         kernel_phys_to_virt_offset,
                     )?;
                     virtual_range.start = virtual_range.start.add(page_type.size());
@@ -189,6 +211,7 @@ impl AddressSpace {
         virtual_addr: VirtualAddr,
         physical_addr: PhysicalAddr,
         permissions: PagePermissions,
+        scope: MappingScope,
         kernel_phys_to_virt_offset: usize,
     ) -> Result<PageTableUpdate, MapError> {
         let mut update = PageTableUpdate::One(virtual_addr);
@@ -201,7 +224,7 @@ impl AddressSpace {
                     page_type,
                 )))
             } else {
-                pte.store(PteValue::leaf(physical_addr, permissions)?);
+                pte.store(PteValue::leaf(physical_addr, permissions, scope)?);
                 Ok(())
             }
         };
@@ -385,7 +408,13 @@ impl MemoryManager {
         let kernel_phys_to_virt_offset = self.kernel_phys_to_virt_offset;
         let addr_space = self.kernel_address_space_mut();
         let virt = addr_space.allocate_addresses(range.size(), min_page_type.alignment());
-        let update = addr_space.map_range(virt, range, permissions, kernel_phys_to_virt_offset)?;
+        let update = addr_space.map_range(
+            virt,
+            range,
+            permissions,
+            MappingScope::Private,
+            kernel_phys_to_virt_offset,
+        )?;
         Ok((virt, update))
     }
 

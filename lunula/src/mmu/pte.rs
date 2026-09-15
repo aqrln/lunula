@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use bitflags::bitflags;
 
 use crate::mmu::{
-    PagePermissions,
+    MappingScope, PagePermissions,
     addr::{PageType, PhysicalAddr},
 };
 
@@ -28,10 +28,8 @@ pub enum InvalidPermissions {
     WriteOnly,
 }
 
-impl TryFrom<PagePermissions> for PteFlags {
-    type Error = InvalidPermissions;
-
-    fn try_from(permissions: PagePermissions) -> Result<Self, Self::Error> {
+impl PteFlags {
+    fn leaf(permissions: PagePermissions, scope: MappingScope) -> Result<Self, InvalidPermissions> {
         let mut flags = Self::empty();
 
         for perm in permissions {
@@ -49,6 +47,11 @@ impl TryFrom<PagePermissions> for PteFlags {
 
         if flags.contains(Self::WRITE) && !flags.contains(Self::READ) {
             return Err(InvalidPermissions::WriteOnly);
+        }
+
+        match scope {
+            MappingScope::Private => (),
+            MappingScope::Global => flags |= Self::GLOBAL,
         }
 
         Ok(flags | Self::VALID)
@@ -76,8 +79,9 @@ impl PteValue {
     pub fn leaf(
         addr: PhysicalAddr,
         permissions: PagePermissions,
+        scope: MappingScope,
     ) -> Result<Self, InvalidPermissions> {
-        Ok(Self::new(addr, PteFlags::try_from(permissions)?))
+        Ok(Self::new(addr, PteFlags::leaf(permissions, scope)?))
     }
 
     // TODO: see the TODO above
@@ -125,43 +129,99 @@ mod tests {
     tests! {
         fn test_pte_leaf() {
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::empty()),
+                PteValue::leaf(0x1000.into(), PagePermissions::empty(), MappingScope::Private),
+                Err(InvalidPermissions::Empty)
+            );
+            assert_eq!(
+                PteValue::leaf(0x1000.into(), PagePermissions::empty(), MappingScope::Global),
                 Err(InvalidPermissions::Empty)
             );
 
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::READ),
+                PteValue::leaf(0x1000.into(), PagePermissions::READ, MappingScope::Private),
                 Ok(PteValue(0x403))
             );
+            assert_eq!(
+                PteValue::leaf(0x1000.into(), PagePermissions::READ, MappingScope::Global),
+                Ok(PteValue(0x423))
+            );
 
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::WRITE),
+                PteValue::leaf(0x1000.into(), PagePermissions::WRITE, MappingScope::Private),
+                Err(InvalidPermissions::WriteOnly)
+            );
+            assert_eq!(
+                PteValue::leaf(0x1000.into(), PagePermissions::WRITE, MappingScope::Global),
                 Err(InvalidPermissions::WriteOnly)
             );
 
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::EXECUTE),
+                PteValue::leaf(0x1000.into(), PagePermissions::EXECUTE, MappingScope::Private),
                 Ok(PteValue(0x409))
             );
+            assert_eq!(
+                PteValue::leaf(0x1000.into(), PagePermissions::EXECUTE, MappingScope::Global),
+                Ok(PteValue(0x429))
+            );
 
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::READ | PagePermissions::WRITE),
+                PteValue::leaf(
+                    0x1000.into(),
+                    PagePermissions::READ | PagePermissions::WRITE,
+                    MappingScope::Private
+                ),
                 Ok(PteValue(0x407))
             );
-
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::READ | PagePermissions::EXECUTE),
-                Ok(PteValue(0x40b))
+                PteValue::leaf(
+                    0x1000.into(),
+                    PagePermissions::READ | PagePermissions::WRITE,
+                    MappingScope::Global
+                ),
+                Ok(PteValue(0x427))
             );
 
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::WRITE | PagePermissions::EXECUTE),
+                PteValue::leaf(
+                    0x1000.into(),
+                    PagePermissions::READ | PagePermissions::EXECUTE,
+                    MappingScope::Private
+                ),
+                Ok(PteValue(0x40b))
+            );
+            assert_eq!(
+                PteValue::leaf(
+                    0x1000.into(),
+                    PagePermissions::READ | PagePermissions::EXECUTE,
+                    MappingScope::Global
+                ),
+                Ok(PteValue(0x42b))
+            );
+
+            assert_eq!(
+                PteValue::leaf(
+                    0x1000.into(),
+                    PagePermissions::WRITE | PagePermissions::EXECUTE,
+                    MappingScope::Private
+                ),
+                Err(InvalidPermissions::WriteOnly)
+            );
+            assert_eq!(
+                PteValue::leaf(
+                    0x1000.into(),
+                    PagePermissions::WRITE | PagePermissions::EXECUTE,
+                    MappingScope::Global
+                ),
                 Err(InvalidPermissions::WriteOnly)
             );
 
             assert_eq!(
-                PteValue::leaf(0x1000.into(), PagePermissions::all()),
+                PteValue::leaf(0x1000.into(), PagePermissions::all(), MappingScope::Private),
                 Ok(PteValue(0x40f))
+            );
+            assert_eq!(
+                PteValue::leaf(0x1000.into(), PagePermissions::all(), MappingScope::Global),
+                Ok(PteValue(0x42f))
             );
         }
 
