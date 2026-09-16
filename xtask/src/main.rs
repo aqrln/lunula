@@ -1,7 +1,7 @@
 #![feature(option_into_flat_iter)]
 
 use argh::FromArgs;
-use tracing_subscriber::{fmt::time::LocalTime, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt::time::LocalTime, util::SubscriberInitExt};
 
 mod workspace;
 

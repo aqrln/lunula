@@ -3,13 +3,13 @@ use std::{
     fmt::Write,
     fs,
     path::{Path, PathBuf},
-    sync::{mpsc, LazyLock},
+    sync::{LazyLock, mpsc},
     thread,
 };
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use argh::FromArgs;
-use ignore::{overrides::OverrideBuilder, WalkBuilder};
+use ignore::{WalkBuilder, overrides::OverrideBuilder};
 use toml_edit::DocumentMut;
 use tracing::{debug, info};
 
