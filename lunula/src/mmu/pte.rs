@@ -54,7 +54,7 @@ impl PteFlags {
             MappingScope::Global => flags |= Self::GLOBAL,
         }
 
-        Ok(flags | Self::VALID)
+        Ok(flags | Self::VALID | Self::ACCESSED | Self::DIRTY)
     }
 }
 
@@ -139,11 +139,11 @@ mod tests {
 
             assert_eq!(
                 PteValue::leaf(0x1000.into(), PagePermissions::READ, MappingScope::Private),
-                Ok(PteValue(0x403))
+                Ok(PteValue(0x4c3))
             );
             assert_eq!(
                 PteValue::leaf(0x1000.into(), PagePermissions::READ, MappingScope::Global),
-                Ok(PteValue(0x423))
+                Ok(PteValue(0x4e3))
             );
 
             assert_eq!(
@@ -157,11 +157,11 @@ mod tests {
 
             assert_eq!(
                 PteValue::leaf(0x1000.into(), PagePermissions::EXECUTE, MappingScope::Private),
-                Ok(PteValue(0x409))
+                Ok(PteValue(0x4c9))
             );
             assert_eq!(
                 PteValue::leaf(0x1000.into(), PagePermissions::EXECUTE, MappingScope::Global),
-                Ok(PteValue(0x429))
+                Ok(PteValue(0x4e9))
             );
 
             assert_eq!(
@@ -170,7 +170,7 @@ mod tests {
                     PagePermissions::READ | PagePermissions::WRITE,
                     MappingScope::Private
                 ),
-                Ok(PteValue(0x407))
+                Ok(PteValue(0x4c7))
             );
             assert_eq!(
                 PteValue::leaf(
@@ -178,7 +178,7 @@ mod tests {
                     PagePermissions::READ | PagePermissions::WRITE,
                     MappingScope::Global
                 ),
-                Ok(PteValue(0x427))
+                Ok(PteValue(0x4e7))
             );
 
             assert_eq!(
@@ -187,7 +187,7 @@ mod tests {
                     PagePermissions::READ | PagePermissions::EXECUTE,
                     MappingScope::Private
                 ),
-                Ok(PteValue(0x40b))
+                Ok(PteValue(0x4cb))
             );
             assert_eq!(
                 PteValue::leaf(
@@ -195,7 +195,7 @@ mod tests {
                     PagePermissions::READ | PagePermissions::EXECUTE,
                     MappingScope::Global
                 ),
-                Ok(PteValue(0x42b))
+                Ok(PteValue(0x4eb))
             );
 
             assert_eq!(
@@ -217,11 +217,11 @@ mod tests {
 
             assert_eq!(
                 PteValue::leaf(0x1000.into(), PagePermissions::all(), MappingScope::Private),
-                Ok(PteValue(0x40f))
+                Ok(PteValue(0x4cf))
             );
             assert_eq!(
                 PteValue::leaf(0x1000.into(), PagePermissions::all(), MappingScope::Global),
-                Ok(PteValue(0x42f))
+                Ok(PteValue(0x4ef))
             );
         }
 
