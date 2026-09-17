@@ -76,7 +76,7 @@ extern "C" fn _start() -> ! {
         "add t0, t0, t1",
         "srli t1, a3, 12", // t1 = ppn(a3)
         "slli t1, t1, 10", // ppn to pte
-        "ori t1, t1, 11", // flags: VRX
+        "ori t1, t1, 0xcb", // flags: VRXAD
         "sd t1, 0(t0)",
 
         // Map the kernel up above.
@@ -112,7 +112,7 @@ extern "C" fn _start() -> ! {
         "3:", // loop over PTEs, t1 = &pte, t0 = ppn, t2 = max_ppn + 1
         "bgeu t0, t2, 4f",
         "slli t3, t0, 10",
-        "ori t3, t3, 0xf", // flags: VRWX
+        "ori t3, t3, 0xcf", // flags: VRWXAD
         "sd t3, 0(t1)",
         "addi t0, t0, 1",
         "addi t1, t1, 8",
