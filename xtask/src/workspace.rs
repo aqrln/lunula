@@ -133,8 +133,11 @@ fn create_workspace(target: &str) -> Result<()> {
         .overrides(
             OverrideBuilder::new(project_dir)
                 .add("!/.cargo/")?
+                .add("!/.envrc")?
                 .add("!/.git/")?
                 .add("!/.jj/")?
+                .add("!/flake.nix")?
+                .add("!/flake.lock")?
                 .add("!/workspaces/")?
                 .build()?,
         )
